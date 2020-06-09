@@ -1,0 +1,199 @@
+<html>
+    <head>
+        <meta charset="utf-8">
+
+        <link href="https://fonts.googleapis.com/css?family=Fira+Mono&amp;display=swap" rel="stylesheet">
+
+        <script src="gpu-browser.min.js"></script>
+        <script src="stats.min.js"></script>
+        <script src="dat.gui.min.js"></script>
+        <script src="photons.js"></script>
+
+        <style>
+            body {
+                background: #272b2e;
+            }
+
+            .screen {
+                width: calc(64 * 1.5em);
+                height: calc(32 * 1.5em);
+
+                display: grid;
+                grid-template-columns: repeat(64, 1.5em);
+                grid-template-rows: repeat(32, 1.5em);
+
+                color: #f0f0f0;
+            }
+
+            body[invert="false"] {
+                background: #f0f0f0;
+            }
+            
+            body[invert="false"] > .screen {
+                color: #272b2e;
+            }
+            
+            .screen p {
+                display: block;
+                margin: 0 0;
+                width: 100%;
+                height: 100%;
+
+                font-family: 'Fira Mono', monospace;
+                font-weight: 500;
+            }
+
+            .crab {
+                position: absolute;
+                margin: 0 0;
+                transition: all 0.2s;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="screen">
+
+        </div>
+        
+        <script>
+            const width = 64;
+            const height = 32;
+
+            const screen = document.querySelector('.screen');
+            const photons = new Photons(width, height);
+
+            photons.sdf.add(SDF.Box(new Vector2(15, 16), new Vector2(1, 9)));
+            photons.sdf.add(SDF.Box(new Vector2(40, 16), new Vector2(1, 9)));
+            photons.sdf.add(SDF.Box(new Vector2(27, 24), new Vector2(13, 1)));
+            photons.sdf.add(SDF.Box(new Vector2(20, 8), new Vector2(5, 1)));
+
+            const ascii = " .:-=+*#%@";
+            let track = true;
+
+            const chars = [];
+            for(let j = 0; j < height; j++) {
+                for(let i = 0; i < width; i++) {
+                    let p = document.createElement('p');
+                    screen.appendChild(p);
+                    chars[(j * width) + i] = p;
+                }
+            }
+
+            
+            var stats = new Stats();
+            stats.showPanel( 1 ); // 0: fps, 1: ms, 2: mb, 3+: custom
+            document.body.appendChild( stats.dom );
+
+            function draw() {
+                stats.begin();
+
+                document.body.setAttribute('invert', obj.invert);
+
+                let light = photons.trace(obj.lx, obj.ly, obj.brightness, obj.gamma, obj.samples, obj.maxSteps, obj.bounces);
+                
+                if(obj.drawSDF)
+                    for(let j = 0; j < height; j++)
+                        for(let i = 0; i < width; i++)
+                            chars[(j * width) + i].innerText = ascii[Math.max(0, parseInt(photons.sdf.data[j * width + i])) % ascii.length];
+                else if(obj.invert)
+                    for(let j = 0; j < height; j++)
+                        for(let i = 0; i < width; i++) {
+                            chars[(j * width) + i].innerText = ascii[Math.min(ascii.length - 1, Math.ceil(light[j][i]))];
+                            /* chars[(j * width) + i].style.opacity = light[j][i] / ascii.length; */
+                        }
+                else
+                    for(let j = 0; j < height; j++)
+                        for(let i = 0; i < width; i++) {
+                            chars[(j * width) + i].innerText = ascii[Math.max(0, ascii.length - 1 - Math.min(ascii.length - 1, Math.ceil(light[j][i])))];
+                            /* chars[(j * width) + i].style.opacity = 1 - (light[j][i] / ascii.length); */
+                        }
+                
+                /*
+                // Draw normals, for debugging
+                const eps = 1;
+                for(let j = 0; j < height; j++)
+                    for(let i = 0; i < width; i++) {
+                        let ro = [i, j];
+                        let rn = [];
+                        rn[0] = photons.sdf.data[Math.floor(ro[1]) * width + Math.floor(ro[0] + eps)] - photons.sdf.data[Math.floor(ro[1]) * width + Math.floor(ro[0] - eps)];
+                        rn[1] = photons.sdf.data[Math.floor(ro[1] + eps) * width + Math.floor(ro[0])] - photons.sdf.data[Math.floor(ro[1] - eps) * width + Math.floor(ro[0])];
+
+                        let nmag = rn[0] * rn[0] + rn[1] * rn[1];
+                        let nlen = Math.sqrt(nmag);
+                        rn[0] /= nlen;
+                        rn[1] /= nlen;
+
+                        let angle = Math.atan((rn[1])/(rn[0]));
+
+                        chars[(j * width) + i].innerText = '-';
+                        chars[(j * width) + i].style.transform = `rotate(${angle}rad)`;
+                    }
+                */
+
+                stats.end();
+                requestAnimationFrame(draw);
+            }
+
+            obj = {
+                draw,
+                brightness: 1000,
+                samples: 50,
+                bounces: 3,
+                maxSteps: 32,
+                lx: 20,
+                ly: 5,
+                drawSDF: false,
+                invert: false,
+                gamma: 0.4
+            };
+
+            window.addEventListener('keydown', function(event) {
+                const key = event.key;
+                switch(key) {
+                    case "e": 
+                        track = !track;
+                        break;
+                    case "w":
+                        var el = document.createElement('p');
+                        el.setAttribute('class', 'crab');
+                        el.innerText = '🦀';
+
+                        document.body.appendChild(el);
+
+                        let points = photons.test(photons.sdf.data, obj.samples, obj.maxSteps, obj.bounces, obj.lx, obj.ly, chars);
+                        for(let i = 0; i < points.length; i++) {
+                            setTimeout(() => {
+                                document.title = `${i}, ${points[i].map(n => typeof(n) == 'number' ? n.toFixed(2) : n)}`;
+                                el.style.left = `${1.5 * + points[i][0]}em`;
+                                el.style.top = `${1.5 * + points[i][1]}em`;
+
+                                if(i == points.length - 1)
+                                    el.style.opacity = 0;
+                            }, i * 1000);
+                        }
+                        break;
+                }
+            });
+
+            screen.onmouseover = function(e) {
+                if(!track) return;
+                obj.lx = (e.clientX / screen.offsetWidth) * width;
+                obj.ly = (e.clientY / screen.offsetHeight) * height;
+            };
+
+            window.onload = function() {
+                var gui = new dat.GUI();
+                gui.add(obj, 'brightness', 0, 5000);
+                gui.add(obj, 'lx', 0, width).listen();
+                gui.add(obj, 'ly', 0, height).listen();
+                gui.add(obj, 'samples', 1, 500);
+                gui.add(obj, 'maxSteps', 1, 64);
+                gui.add(obj, 'bounces', 1, 10);
+                gui.add(obj, 'gamma', 0., 10.);
+                gui.add(obj, 'drawSDF');
+                gui.add(obj, 'invert');
+                draw();
+            };
+        </script>
+    </body>
+</html>
